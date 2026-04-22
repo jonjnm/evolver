@@ -38,11 +38,26 @@ const DEFAULT_HOOK_TIMEOUT_MS = 25000;
 
 // Paper + docs we cite in the rationale field so agents can explain to users
 // why we ship Genes/Capsules in addition to the human-facing Skill.
+// NOTE: The paper validates Gene as a control-dense interface on 45 scientific
+// code-solving scenarios with Gemini 3.1 Pro/Flash Lite. Generalization to other
+// agent domains (web ops, long tool chains, multi-agent negotiation, etc.) is an
+// explicit assumption of this tool, not a proven result. The rationale string
+// we emit reflects this.
 const RATIONALE_LINKS = {
   paper: 'Wang, Ren, Zhang. From Procedural Skills to Strategy Genes. arXiv:2604.15097',
   protocol: 'https://evomap.ai/wiki/16-gep-protocol',
   skill_store: 'https://evomap.ai/wiki/31-skill-store',
 };
+
+const RATIONALE_TEXT = ''
+  + 'Emitted both the human-facing Skill and the machine-facing GEP asset(s). '
+  + 'In the paper\'s domain (45 scientific code-solving scenarios, Gemini 3.1 '
+  + 'Pro/Flash Lite; ' + 'Wang, Ren, Zhang, arXiv:2604.15097'
+  + '), Gene-as-control-interface outperforms procedural SKILL.md. '
+  + 'Generalization to other domains is an assumption of this tool, not a '
+  + 'proven result; outcome quality depends on the source Skill and on real '
+  + 'execution evidence. See ' + 'https://evomap.ai/wiki/16-gep-protocol'
+  + ' for the protocol.';
 
 function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
 
@@ -197,29 +212,63 @@ function synthesizeGene(parsed, execution, opts) {
   const traceSignals = Array.isArray(execution && execution.signals) ? execution.signals : [];
   const mergedSignals = Array.from(new Set([].concat(parsed.signals_match || [], traceSignals)));
 
+  // AVOID items live in their own top-level `avoid` field on the Gene, NOT as
+  // synthetic "AVOID: ..." strategy steps. Skill Store / Hub renderers should
+  // surface them in a dedicated "## Avoid" section so downstream consumers
+  // never mistake anti-patterns for positive steps.
   const strategy = [];
   (parsed.strategy || []).forEach((s) => strategy.push(s));
-  (parsed.avoid || []).forEach((s) => strategy.push('AVOID: ' + s));
   if (strategy.length < 3) {
     strategy.push('Identify the dominant trigger signals from the Skill description.');
     strategy.push('Apply the smallest targeted change that satisfies the Skill workflow.');
     strategy.push('Run the Skill validation commands and abort if any fails.');
   }
+  const avoid = Array.isArray(parsed.avoid) ? parsed.avoid.slice(0, 5) : [];
 
   // Filter validation commands through the same allow-list that
   // validateSynthesizedGene will later apply (node/npm/npx only). If the
   // skill's original validation lines are all blocked (e.g. pytest, bash)
   // we would end up with an empty gene.validation, which would silently
-  // defeat the Capsule coverage check. In that case, fall back to a
-  // concrete, runnable placeholder so validation stays enforced.
+  // defeat the Capsule coverage check. In that case, behavior depends on
+  // strict mode:
+  //   - strict=true  -> refuse to synthesize; caller gets an explicit error.
+  //   - strict=false -> fall back to a concrete but near-trivial 'node --version'
+  //                     so Gene.validation is never empty. The quality
+  //                     heuristics field records that a fallback was used.
   const policyCheck = require('./policyCheck');
   const rawValidations = Array.isArray(parsed.validation) ? parsed.validation : [];
   const allowedValidations = rawValidations
     .map((v) => String(v || '').trim())
     .filter((v) => v && policyCheck.isValidationCommandAllowed(v));
-  const validation = allowedValidations.length > 0
-    ? allowedValidations
-    : ['node --version'];
+  const fallbackUsed = allowedValidations.length === 0;
+  const strict = Boolean(opts && opts.strict);
+  if (strict && fallbackUsed) {
+    return {
+      valid: false,
+      errors: [
+        'strict mode: no allowed validation commands found in the Skill. '
+        + 'GEP validation only permits "node "/"npm "/"npx " prefixes. '
+        + 'Rewrite the Skill\'s validation section with those, or drop --strict.',
+      ],
+      gene: null,
+    };
+  }
+  const validation = fallbackUsed ? ['node --version'] : allowedValidations;
+
+  // Quality heuristics: lightweight signals for downstream reviewers (and the
+  // paper-assumption disclaimer). These do NOT guarantee Gene quality; they
+  // only describe how much signal we managed to extract from the source Skill.
+  const avoidCount = (parsed.avoid || []).length;
+  const strategySteps = (parsed.strategy || []).length;
+  const qualityHeuristics = {
+    strategy_steps: strategySteps,
+    avoid_count: avoidCount,
+    validation_declared_count: rawValidations.length,
+    validation_runnable_count: allowedValidations.length,
+    validation_fallback_used: fallbackUsed,
+    signals_extracted: (parsed.signals_match || []).length,
+    preconditions_extracted: (parsed.preconditions || []).length,
+  };
 
   const skillSlug = slugify(parsed.name || (opts && opts.skillName) || 'skill');
   const draft = {
@@ -232,6 +281,7 @@ function synthesizeGene(parsed, execution, opts) {
       ? parsed.preconditions
       : ['Skill ' + (parsed.name || 'unknown') + ' has just been executed locally'],
     strategy: strategy.slice(0, 10),
+    avoid: avoid,
     constraints: {
       max_files: (opts && opts.maxFiles) || skillDistiller.DISTILLED_MAX_FILES,
       forbidden_paths: ['.git', 'node_modules'],
@@ -244,7 +294,9 @@ function synthesizeGene(parsed, execution, opts) {
       skill_platform: (opts && opts.platform) || null,
       skill_hash: opts && opts.skillHash ? opts.skillHash : null,
       rationale_paper: RATIONALE_LINKS.paper,
-      dropped_validation_count: rawValidations.length - allowedValidations.length,
+      paper_scope: 'code-science (arXiv:2604.15097, 45 tasks, Gemini 3.1 Pro/Flash Lite)',
+      claims_outside_scope: 'assumption',
+      quality_heuristics: qualityHeuristics,
     },
   };
 
@@ -423,6 +475,7 @@ function runOnSkillInvocation(opts) {
     skillName: opts.skillName || parsed.name,
     platform: opts.platform || null,
     skillHash: skillHash,
+    strict: Boolean(opts.strict),
   });
   if (!geneResult.valid) {
     appendJsonl(logPath(), {
@@ -512,7 +565,7 @@ function runOnSkillInvocation(opts) {
     persist_errors: persistErrors,
     publish_requested: shouldPublish,
     publish_promise: publishPromise,
-    rationale: 'Shipped both the human-facing Skill and the machine-facing GEP asset(s). GEP assets raise control density per token (' + RATIONALE_LINKS.paper + '), are content-addressed for audit, and are reusable across agents via ' + RATIONALE_LINKS.protocol + '.',
+    rationale: RATIONALE_TEXT,
   };
 }
 
@@ -577,6 +630,7 @@ module.exports = {
   SKILL2GEP_ID_PREFIX,
   CAPSULE_ID_PREFIX,
   RATIONALE_LINKS,
+  RATIONALE_TEXT,
   parseSkillMd,
   synthesizeGene,
   detectForgery,
