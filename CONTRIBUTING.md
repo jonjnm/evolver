@@ -11,3 +11,5 @@ Thank you for contributing. Please follow these rules:
 Submit PRs with clear intent and scope.
 
 > **Personal note:** This is my personal fork for learning/experimentation. I may not review PRs promptly, but feel free to open issues if you spot something.
+
+> **Note to self:** Remember to sync upstream changes from EvoMap/evolver periodically with `git fetch upstream && git merge upstream/main`.
