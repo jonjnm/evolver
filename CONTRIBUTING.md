@@ -7,9 +7,12 @@ Thank you for contributing. Please follow these rules:
 - Update related documentation when you change behavior.
 - Run `node index.js` for a quick sanity check.
 - Run `npm test` if tests are available before submitting.
+- Run `npm run lint` if available to catch style issues early.
 
 Submit PRs with clear intent and scope.
 
 > **Personal note:** This is my personal fork for learning/experimentation. I may not review PRs promptly, but feel free to open issues if you spot something.
 
 > **Note to self:** Remember to sync upstream changes from EvoMap/evolver periodically with `git fetch upstream && git merge upstream/main`.
+
+> **Note to self:** Before syncing upstream, make sure local changes are committed or stashed so nothing gets clobbered.
