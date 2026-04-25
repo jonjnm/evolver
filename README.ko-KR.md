@@ -53,10 +53,4 @@ Evolver는 하나의 설치 방법에 두 가지 사용 형태가 있습니다. 
 - **[Node.js](https://nodejs.org/)** >= 18
 - **[Git](https://git-scm.com/)** -- 필수. Evolver는 롤백, 변경 범위 계산, solidify에 git을 사용합니다. git 저장소가 아닌 디렉터리에서 실행하면 명확한 오류 메시지와 함께 실패합니다.
 
-> **참고 (개인 메모)**: Windows 환경에서는 Git Bash 또는 WSL2를 사용하는 것을 권장합니다. PowerShell에서 실행할 경우 경로 관련 문제가 발생할 수 있습니다.
-
-### npm에서 설치 (권장)
-
-```bash
-npm install -
-```
+> **참고 (개인 메모)**: Windows 환경에서는 Git Bash를 사용하는 것을 권장합니다. PowerShell에서는 일부 명령어가 예상대로 동작하지 않을 수 있습니다. WSL2도 좋은 대안입니다.
