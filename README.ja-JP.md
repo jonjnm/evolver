@@ -54,12 +54,10 @@ Evolver のインストール方法は 1 つですが、使い方は 2 種類あ
 - **[Node.js](https://nodejs.org/)** >= 18
 - **[Git](https://git-scm.com/)** -- 必須。Evolverはロールバック、影響範囲の算出、solidifyにgitを使用します。git管理外のディレクトリで実行すると、明確なエラーメッセージが表示されます。
 
-> **個人メモ**: Node.js 20 LTS での動作確認済み。18 でも動くが、20 の方が体感的に安定している印象。
+> **個人メモ**: Node.js 20 LTS での動作確認済み。18 でも動くが、20 の方が体感的に安定している印象。22 LTS でも問題なく動作することを確認した（2024年末時点）。
 
 ### npm からインストール（推奨）
 
 ```bash
-npm install -g @evomap/evolver
+npm install -g 
 ```
-
-`evolver` CLI がグローバルにインストールされます。`evolver --he
